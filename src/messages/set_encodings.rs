@@ -1,6 +1,8 @@
-use crate::io::{BigEndian, Decode, DecodeFrom, Encode, EncodeTo, Length};
+use crate::{
+    encodings::EncodingType,
+    io::{Decode, DecodeFrom, Encode, EncodeTo, Length},
+};
 use std::io::{Read, Write};
-
 #[derive(Debug, PartialEq, PartialOrd)]
 pub struct SetEncodings {
     pub encodings: Vec<EncodingType>,
@@ -30,15 +32,6 @@ impl<R: Read> DecodeFrom<R> for SetEncodings {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd)]
-#[repr(i32)]
-pub enum EncodingType {
-    Raw,
-    CopyRect,
-    Rre,
-    CoRre = 4,
-    Hextile,
-}
 impl Length for EncodingType {
     const LENGTH: usize = 4;
 }
@@ -46,7 +39,7 @@ impl Length for EncodingType {
 impl Encode for EncodingType {
     type Error = crate::Error;
     fn encode(self) -> Result<[u8; <Self as Length>::LENGTH], Self::Error> {
-        Ok((self as i32).to_be_bytes())
+        Ok((i32::from(self)).to_be_bytes())
     }
 }
 

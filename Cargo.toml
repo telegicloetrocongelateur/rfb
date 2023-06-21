@@ -7,3 +7,4 @@ edition = "2021"
 
 [dev-dependencies]
 env_logger = "*"
+

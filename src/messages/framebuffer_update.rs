@@ -1,8 +1,10 @@
 use std::io::{Read, Write};
 
-use crate::io::{BigEndian, DecodeFrom, EncodeTo};
+use crate::{
+    encodings::EncodingType,
+    io::{DecodeFrom, EncodeTo},
+};
 
-use super::EncodingType;
 #[derive(Debug, PartialEq, PartialOrd)]
 pub struct FramebufferUpdate {
     pub rectangles: Vec<Rectangle>,

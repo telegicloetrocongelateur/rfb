@@ -1,9 +1,34 @@
-use std::array;
-use std::convert::Infallible;
 use std::io::{Read, Write};
 
 pub trait Length {
     const LENGTH: usize;
+}
+pub type Be<T> = BigEndian<T>;
+pub struct BigEndian<T> {
+    pub inner: T,
+}
+impl<T> BigEndian<T> {
+    pub fn new(inner: T) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T: Length> Length for BigEndian<T> {
+    const LENGTH: usize = T::LENGTH;
+}
+
+pub type Le<T> = LittleEndian<T>;
+pub struct LittleEndian<T> {
+    pub inner: T,
+}
+impl<T> LittleEndian<T> {
+    pub fn new(inner: T) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T: Length> Length for LittleEndian<T> {
+    const LENGTH: usize = T::LENGTH;
 }
 
 pub trait Decode: Sized + Length {
@@ -11,12 +36,13 @@ pub trait Decode: Sized + Length {
     fn decode(data: [u8; <Self as Length>::LENGTH]) -> Result<Self, Self::Error>;
 }
 
-pub trait DecodeFrom<R: Read>: Sized {
+pub trait DecodeFrom<R>: Sized {
     type Error;
+
     fn decode_from(reader: &mut R) -> Result<Self, Self::Error>;
 }
 
-impl<R: Read, T: Decode + std::fmt::Debug> DecodeFrom<R> for T
+impl<R: Read, T: Decode> DecodeFrom<R> for T
 where
     T::Error: From<std::io::Error>,
     [(); <Self as Length>::LENGTH]:,
@@ -26,9 +52,7 @@ where
         let mut buf = [0; <T as Length>::LENGTH];
         reader.read_exact(&mut buf)?;
 
-        let t = Self::decode(buf)?;
-        println!("Received: {:?}", t);
-        Ok(t)
+        Self::decode(buf)
     }
 }
 
@@ -44,23 +68,24 @@ impl<R: Read> DecodeFrom<R> for String {
     }
 }
 
-pub trait Encode: Length {
+pub trait Encode: Length + Sized {
     type Error;
+    type Input = Self;
     fn encode(self) -> Result<[u8; <Self as Length>::LENGTH], Self::Error>;
 }
-pub trait EncodeTo<W: Write>: Sized {
+pub trait EncodeTo<W>: Sized {
     type Error: From<std::io::Error>;
     fn encode_to(self, writer: &mut W) -> Result<usize, Self::Error>;
 }
 
-impl<W: Write, T: Encode + std::fmt::Debug> EncodeTo<W> for T
+impl<W: Write, T: Encode> EncodeTo<W> for T
 where
     T::Error: From<std::io::Error>,
     [(); <Self as Length>::LENGTH]:,
 {
     type Error = T::Error;
+
     fn encode_to(self, writer: &mut W) -> Result<usize, Self::Error> {
-        println!("Sent : {:?}", self);
         let data = self.encode()?;
         let size = data.len();
         writer.write_all(&data)?;
@@ -91,43 +116,12 @@ impl<R: Read, T: DecodeFrom<R>, const N: usize> DecodeFrom<R> for [T; N] {
         std::array::try_from_fn(|_| T::decode_from(reader))
     }
 }
-impl<W: Write> EncodeTo<W> for String {
-    type Error = crate::Error;
-    fn encode_to(self, writer: &mut W) -> Result<usize, Self::Error> {
-        let len: u32 = self.len().try_into()?;
-        len.encode_to(writer)?;
-        writer.write_all(self.as_bytes())?;
-        Ok(4 + self.len())
-    }
-}
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
-pub struct BigEndian<T> {
-    pub data: T,
-}
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
-
-pub struct LittleEndian<T> {
-    pub data: T,
-}
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
-
-pub struct NativeEndian<T> {
-    pub data: T,
-}
-
-trait Endian {}
-impl<T> Endian for BigEndian<T> {}
-impl<T> Endian for LittleEndian<T> {}
-impl<T> Endian for NativeEndian<T> {}
-crate::impl_decode!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
-
-#[macro_export]
-macro_rules! impl_decode {
+macro_rules! impl_numbers {
     ($($type: ident),*) => {
         $(
             impl Length for $type {
-                const LENGTH: usize = ($type::BITS/ 8) as usize;
+                const LENGTH: usize = (Self::BITS / 8) as usize;
             }
             impl Decode for $type {
                 type Error = $crate::Error;
@@ -143,42 +137,29 @@ macro_rules! impl_decode {
                     Ok(self.to_be_bytes())
                 }
             }
-
-
-            $crate::impl_endians!(BigEndian, $type, from_be_bytes, to_be_bytes);
-
+            impl_endians!(BigEndian, $type, from_be_bytes, to_be_bytes);
+            impl_endians!(LittleEndian, $type, from_le_bytes, to_le_bytes);
         )*
-
     };
 }
 #[macro_export]
-
 macro_rules! impl_endians {
     ($endian:ident, $type:ident, $from_bytes: ident, $to_bytes: ident) => {
-        impl Length for $endian<$type> {
-            const LENGTH: usize = <$type as Length>::LENGTH;
-        }
         impl Decode for $endian<$type> {
             type Error = $crate::Error;
             fn decode(data: [u8; <Self as Length>::LENGTH]) -> Result<Self, Self::Error> {
                 Ok($endian {
-                    data: <$type>::$from_bytes(data),
+                    inner: <$type>::$from_bytes(data),
                 })
             }
         }
-
         impl Encode for $endian<$type> {
             type Error = $crate::Error;
             fn encode(self) -> Result<[u8; <Self as Length>::LENGTH], Self::Error> {
-                Ok(self.data.$to_bytes())
-            }
-        }
-
-        impl TryFrom<$endian<$type>> for usize {
-            type Error = <$type as TryInto<usize>>::Error;
-            fn try_from(value: $endian<$type>) -> Result<usize, Self::Error> {
-                value.data.try_into()
+                Ok(self.inner.$to_bytes())
             }
         }
     };
 }
+
+impl_numbers!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);

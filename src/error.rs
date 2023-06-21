@@ -50,7 +50,7 @@ impl From<Infallible> for Error {
 
 
 impl From<TryFromIntError> for Error {
-    fn from(value: TryFromIntError) -> Self {
+    fn from(_value: TryFromIntError) -> Self {
         Self::LengthTooBig
     }
 }

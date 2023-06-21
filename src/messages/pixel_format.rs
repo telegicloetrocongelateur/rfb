@@ -1,5 +1,4 @@
 use crate::io::*;
-use std::convert::Infallible;
 #[derive(Clone, PartialEq, PartialOrd, Debug)]
 
 pub struct PixelFormat {
